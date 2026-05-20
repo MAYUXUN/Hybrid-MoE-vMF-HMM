@@ -2,55 +2,81 @@
 """
 mixture_hybrid_vmf_hmm.py
 =========================
-Mixture Hybrid vMF HMM — emission μ and κ are jointly determined by
-(state base parameters + context-dependent residuals from a hybrid encoder).
+Mixture-of-Experts Hybrid vMF-HMM for interpretable next-POI prediction.
+
+This script implements a hybrid Hidden Markov Model in which the emission
+probability is defined over LINE-based POI embeddings using a discrete
+von Mises--Fisher-style formulation. The base emission parameters provide
+interpretable latent mobility states, while a trajectory-history encoder
+generates residual emission parameters to improve prediction accuracy.
 
 Architecture
 ------------
 Frozen LINE embeddings
     user_emb [U+1, D]  loc_emb [L+1, D]  cat_emb [C+1, D]  time_emb [12+1, D]
-    loaded from line_ckpt_dir/embeddings.pt
+    loaded from line_ckpt_dir/embeddings.pt or individual *.npy files.
+    These embeddings are fixed during vMF-HMM training.
 
-User-specific gate (group-membership prior)
-    user_gate_logits : nn.Embedding(U+1, K), zero-init, padding_idx=0
-    pi_logits = user_gate_logits[uid]                    → [B, K]
-    π_{u,k}   = softmax(pi_logits / pi_temperature)
-    (LINE user embedding is no longer used here; it is only consumed by
-     HybridEncoder for residual emission parameters.)
+User-specific mixture gate
+    user_gate_logits : nn.Embedding(U+1, K), zero-initialized, padding_idx=0
+    pi_logits = user_gate_logits[uid]                    -> [B, K]
+    pi_{u,k}  = softmax(pi_logits / pi_temperature)
+    The gate assigns each user to a mixture of expert HMMs.
 
-Encoder2History   (sequential context)
-    input  : concat(loc_emb[l], cat_emb[c], time_emb[th]) at each step → [B, T, 3D]
-    LSTM   : 3D → hist_hidden=128
-    output : hist_seq [B, T, H],  final_h [B, H]
+Encoder2History
+    input  : concat(loc_emb[l], cat_emb[c], time_emb[th]) at each step
+             -> [B, T, 3D]
+    LSTM   : 3D -> hist_hidden
+    output : hist_seq [B, T, H], final_h [B, H]
+    The previous hidden output h_{t-1} is used as sequential context.
 
-HybridEncoder   (residual emission parameters)
-    z = concat(user_emb[uid], h_{t-1})    dim = D + H = 256
-    MLP_mu    : 256 → 256 → K*S*D   → delta_mu    [B, T, K, S, D]
-    MLP_kappa : 256 →  64 → K*S     → delta_logk  [B, T, K, S]
+HybridEncoder
+    z = concat(user_emb[uid], h_{t-1})                    -> [B, T, D+H]
+    MLP_mu    : D+H -> 256 -> K*S*D                       -> delta_mu [B, T, K, S, D]
+    MLP_kappa : D+H -> 64  -> K*S                         -> delta_log_kappa [B, T, K, S]
+    These residuals make the emission distribution history-dependent.
 
 Base emission parameters
-    mu_base       [K, S, D]   random unit vectors
-    log_kappa_base [K, S]     init = log(50)
+    mu_base          [K, S, D]   initialized from K-means centroids of POI embeddings
+    log_kappa_base   [K, S]      initialized to log(30)
+    Each base direction represents an interpretable latent mobility state.
 
-Final emission
-    mu_final      = normalize(mu_base + delta_mu)          [B, T, K, S, D]
-    kappa_final   = exp(clamp(log_kappa_base + delta_logk, 0, log 500))
-    log p(l|s,k,h) = kappa * <mu_final, loc_emb_norm[l]> + log_C_D(kappa)
-    (large-κ approximation for log_C_D — valid for κ ≥ 10; init kappa ≈ 50)
+Angular-bounded residual update
+    mu_final = normalize(mu_base + delta_mu), with the angular deviation from
+    mu_base clipped by max_angle.
+    This constraint allows history-dependent adaptation while preserving the
+    interpretability of the base latent states.
 
-HMM forward  : log-space forward algorithm, same structure as hmhmm_factored.py
-Loss         : NLL only (no regularizer)
-Metrics      : Recall@1/5/10 and NDCG@5/10
+Discrete vMF emission
+    log P(l | s, k, h, u)
+        = kappa * <mu_final, loc_emb_norm[l]>
+          - logsumexp_{l'} kappa * <mu_final, loc_emb_norm[l']>
+
+    The emission probability is normalized over the finite POI set rather than
+    over the continuous unit sphere.
+
+HMM forward
+    Log-space forward algorithm for each expert HMM, followed by user-specific
+    mixture aggregation over experts.
+
+Loss
+    Negative log-likelihood plus state diversity regularization.
+
+Metrics
+    Recall@1/5/10 and NDCG@5/10.
 
 Usage
 -----
 python mixture_hybrid_vmf_hmm.py \\
-    --pkl_path NYC_getnext_ready.pkl \\
-    --line_ckpt_dir multimodal_line_emb_NYC \\
-    --save_dir mhvmf_K4_S16_NYC \\
-    --num_classes 4 --num_states 16 --epochs 100
+    --pkl_path data/NYC_getnext_ready.pkl \\
+    --line_ckpt_dir embeddings/multimodal_line_runs \\
+    --save_dir outputs/mhvmf_K4_S4_NYC \\
+    --num_classes 4 \\
+    --num_states 4 \\
+    --max_angle 0.15 \\
+    --beta_div 10 \\
+    --epochs 100
 """
-
 import os
 import math
 import time
