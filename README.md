@@ -45,4 +45,4 @@ This folder contains the visualization results generated from the proposed model
 
 ## Results
 
-This folder contains the experimental results of the proposed model with 4 experts, 4 hidden states per expert, and an angular constraint of 0.1 radians.
+This folder contains the experimental results of the proposed model with 4 experts, 4 hidden states per expert, and an angular constraint of 0.05 radians.
