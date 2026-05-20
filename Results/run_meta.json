@@ -1,0 +1,13 @@
+{
+  "pkl_path": "/content/drive/MyDrive/Colab Notebooks/phd_research/ABM/NYC_getnext_ready.pkl",
+  "line_ckpt_dir": "/content/drive/MyDrive/Colab Notebooks/phd_research/ABM/multimodal_line_runs",
+  "loc_size": 5001,
+  "cat_size": 320,
+  "user_size": 1048,
+  "emb_dim": 128,
+  "train_instances": 10027,
+  "val_instances": 1506,
+  "test_instances": 1490,
+  "best_val_recall10": 0.2693672745074042,
+  "best_model_path": "/content/drive/MyDrive/Colab Notebooks/phd_research/ABM/mhvmf_K4_S4_angle_005_t01_10penalty_NYC/best_model.pt"
+}
