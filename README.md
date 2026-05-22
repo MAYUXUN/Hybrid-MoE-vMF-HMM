@@ -1,6 +1,5 @@
 # Hybrid-MoE-vMF-HMM
-This is the pytorch implementation of paper "A Hybrid Mixture-of-Experts von Mises–Fisher Hidden Markov Model for Interpretable Next-POI Prediction". This Paper has been subimitted to ACM SIGSPATIAL2026
-![model-structure](Figures/vMF-HMM_framework-v7.png)
+This is the pytorch implementation of paper "A Hybrid Mixture-of-Experts von Mises–Fisher Hidden Markov Model for Interpretable Next-POI Prediction". 
 
 ## Installation
 ```
